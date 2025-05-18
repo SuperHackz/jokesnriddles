@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Joke & Riddle Quiz</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta author="SuperHackz"
+  <style>
+    body { font-family: Arial, sans-serif; background: #f9f9f9; }
+    #container {
+      max-width: 500px;
+      margin: 40px auto;
+      background: #fff;
+      border-radius: 8px;
+      box-shadow: 0 2px 8px #0001;
+      padding: 2em;
+    }
+    h1 { text-align: center; color: #3a3a3a; }
+    #question { font-size: 1.2em; margin-bottom: 1em; }
+    .options { margin: 1em 0; }
+    .options button {
+      display: block;
+      width: 100%;
+      margin: .5em 0;
+      padding: .7em;
+      background: #f0f0f0;
+      border: none;
+      border-radius: 4px;
+      font-size: 1em;
+      cursor: pointer;
+      transition: background .2s;
+    }
+    .options button:hover { background: #e0eaff; }
+    .options button.correct { background: #a5f7b2; }
+    .options button.incorrect { background: #f7b5b5; }
+    #result { font-weight: bold; margin-top: 1em; }
+    #nextBtn {
+      display: block;
+      margin: 2em auto 0;
+      padding: .7em 2em;
+      font-size: 1em;
+      background: #4a90e2;
+      color: #fff;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: background .2s;
+    }
+    #nextBtn:hover { background: #3576b6; }
+  </style>
+</head>
+<body>
+  <div id="container">
+    <h1>Joke & Riddle Quiz</h1>
+    <div id="question">Loading...</div>
+    <div class="options" id="options"></div>
+    <div id="result"></div>
+    <button id="nextBtn" style="display:none">Next</button>
+  </div>
+  <script>
+    // Joke/riddle APIs:
+    // Joke: https://official-joke-api.appspot.com/jokes/random
+    // Riddle: https://riddles-api.vercel.app/random (returns {riddle, answer})
+    // We'll randomly select between joke and riddle
+
+    async function fetchJokeOrRiddle() {
+      const isJoke = Math.random() < 0.5;
+      if (isJoke) {
+        // Joke API
+        const res = await fetch('https://official-joke-api.appspot.com/jokes/random');
+        const data = await res.json();
+        return {
+          question: data.setup,
+          answer: data.punchline,
+          type: 'joke'
+        };
+      } else {
+        // Riddle API
+        const res = await fetch('https://riddles-api.vercel.app/random');
+        const data = await res.json();
+        return {
+          question: data.riddle,
+          answer: data.answer,
+          type: 'riddle'
+        };
+      }
+    }
+
+    async function generateOptions(correct, type) {
+      let distractors = [];
+      const tries = [];
+      for (let i = 0; i < 5; i++) tries.push(fetchJokeOrRiddle());
+      const results = await Promise.all(tries);
+      for (const item of results) {
+        if (item.answer !== correct && distractors.length < 3) {
+          distractors.push(item.answer);
+        }
+      }
+      while (distractors.length < 3) {
+        distractors.push(type === 'joke' ? "I don't know!" : "No idea!");
+      }
+      const options = [...distractors.slice(0, 3), correct];
+      for (let i = options.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [options[i], options[j]] = [options[j], options[i]];
+      }
+      return options;
+    }
+
+    let currentAnswer = '';
+    let allowClick = true;
+
+    async function loadQuestion() {
+      document.getElementById('result').textContent = '';
+      document.getElementById('nextBtn').style.display = 'none';
+      allowClick = true;
+      document.getElementById('question').textContent = 'Loading...';
+      document.getElementById('options').innerHTML = '';
+      const data = await fetchJokeOrRiddle();
+      currentAnswer = data.answer;
+      document.getElementById('question').textContent = data.question;
+      const options = await generateOptions(data.answer, data.type);
+      const optionsDiv = document.getElementById('options');
+      optionsDiv.innerHTML = '';
+      options.forEach(option => {
+        const btn = document.createElement('button');
+        btn.textContent = option;
+        btn.onclick = () => checkAnswer(btn, option);
+        optionsDiv.appendChild(btn);
+      });
+    }
+
+    function checkAnswer(btn, selected) {
+      if (!allowClick) return;
+      allowClick = false;
+      const buttons = document.querySelectorAll('#options button');
+      buttons.forEach(b => b.disabled = true);
+      if (selected === currentAnswer) {
+        btn.classList.add('correct');
+        document.getElementById('result').textContent = "Correct! 🎉";
+      } else {aa
+        btn.classList.add('incorrect');
+        document.getElementById('result').textContent = "Oops! The correct answer was: " + currentAnswer;
+        buttons.forEach(b => {
+          if (b.textContent === currentAnswer) b.classList.add('correct');
+        });
+      }
+      document.getElementById('nextBtn').style.display = 'block';
+    }
+
+    document.getElementById('nextBtn').onclick = loadQuestion;
+    loadQuestion();
+  </script>
+</body>
+</html>
