@@ -16,6 +16,7 @@
       padding: 2em;
     }
     h1 { text-align: center; color: #3a3a3a; }
+    #scoreboard { text-align: center; font-size: 1.1em; margin-bottom: 1em; }
     #question { font-size: 1.2em; margin-bottom: 1em; }
     .options { margin: 1em 0; }
     .options button {
@@ -47,26 +48,81 @@
       transition: background .2s;
     }
     #nextBtn:hover { background: #3576b6; }
+    #resetBtn {
+      display: block;
+      margin: 1em auto 0;
+      padding: .4em 1.2em;
+      font-size: 0.95em;
+      background: #bbb;
+      color: #fff;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: background .2s;
+    }
+    #resetBtn:hover { background: #888; }
   </style>
 </head>
 <body>
   <div id="container">
     <h1>Joke & Riddle Quiz</h1>
+    <div id="scoreboard"></div>
     <div id="question">Loading...</div>
     <div class="options" id="options"></div>
     <div id="result"></div>
     <button id="nextBtn" style="display:none">Next</button>
+    <button id="resetBtn">Reset Score</button>
   </div>
   <script>
+    // Cookie helpers
+    function setCookie(name, value, days) {
+      const d = new Date();
+      d.setTime(d.getTime() + (days*24*60*60*1000));
+      const expires = "expires="+ d.toUTCString();
+      document.cookie = name + "=" + encodeURIComponent(value) + ";" + expires + ";path=/";
+    }
+    function getCookie(name) {
+      const cname = name + "=";
+      const decodedCookie = decodeURIComponent(document.cookie);
+      const ca = decodedCookie.split(';');
+      for(let i = 0; i < ca.length; i++) {
+        let c = ca[i];
+        while (c.charAt(0) == ' ') c = c.substring(1);
+        if (c.indexOf(cname) == 0) return c.substring(cname.length, c.length);
+      }
+      return "";
+    }
+
+    // Score management
+    let score = 0;
+    let total = 0;
+    function loadScore() {
+      score = parseInt(getCookie('quiz_score')) || 0;
+      total = parseInt(getCookie('quiz_total')) || 0;
+      updateScoreboard();
+    }
+    function saveScore() {
+      setCookie('quiz_score', score, 365);
+      setCookie('quiz_total', total, 365);
+    }
+    function resetScore() {
+      score = 0;
+      total = 0;
+      saveScore();
+      updateScoreboard();
+    }
+    function updateScoreboard() {
+      document.getElementById('scoreboard').textContent =
+        `Score: ${score} / ${total}${total ? ' ('+Math.round((score/total)*100)+'%)' : ''}`;
+    }
+
     // Joke/riddle APIs:
     // Joke: https://official-joke-api.appspot.com/jokes/random
     // Riddle: https://riddles-api.vercel.app/random (returns {riddle, answer})
-    // We'll randomly select between joke and riddle
 
     async function fetchJokeOrRiddle() {
       const isJoke = Math.random() < 0.5;
       if (isJoke) {
-        // Joke API
         const res = await fetch('https://official-joke-api.appspot.com/jokes/random');
         const data = await res.json();
         return {
@@ -75,7 +131,6 @@
           type: 'joke'
         };
       } else {
-        // Riddle API
         const res = await fetch('https://riddles-api.vercel.app/random');
         const data = await res.json();
         return {
@@ -86,6 +141,7 @@
       }
     }
 
+    // Generate multiple choice options (one correct, 2-3 distractors)
     async function generateOptions(correct, type) {
       let distractors = [];
       const tries = [];
@@ -96,9 +152,11 @@
           distractors.push(item.answer);
         }
       }
+      // If not enough distractors, add some generic ones
       while (distractors.length < 3) {
         distractors.push(type === 'joke' ? "I don't know!" : "No idea!");
       }
+      // Shuffle options
       const options = [...distractors.slice(0, 3), correct];
       for (let i = options.length - 1; i > 0; i--) {
         const j = Math.floor(Math.random() * (i + 1));
@@ -135,20 +193,33 @@
       allowClick = false;
       const buttons = document.querySelectorAll('#options button');
       buttons.forEach(b => b.disabled = true);
+      total += 1;
       if (selected === currentAnswer) {
         btn.classList.add('correct');
         document.getElementById('result').textContent = "Correct! 🎉";
+        score += 1;
       } else {
         btn.classList.add('incorrect');
         document.getElementById('result').textContent = "Oops! The correct answer was: " + currentAnswer;
+        // Highlight the correct answer
         buttons.forEach(b => {
           if (b.textContent === currentAnswer) b.classList.add('correct');
         });
       }
+      saveScore();
+      updateScoreboard();
       document.getElementById('nextBtn').style.display = 'block';
     }
 
     document.getElementById('nextBtn').onclick = loadQuestion;
+    document.getElementById('resetBtn').onclick = () => {
+      if (confirm('Reset your score?')) {
+        resetScore();
+      }
+    };
+
+    // Start
+    loadScore();
     loadQuestion();
   </script>
 </body>
