@@ -61,17 +61,64 @@
       transition: background .2s;
     }
     #resetBtn:hover { background: #888; }
+    #star-link {
+      display: block;
+      text-align: center;
+      margin: 2.5em auto 0;
+      font-size: 1.05em;
+      text-decoration: none;
+      color: #333;
+      background: #ffe082;
+      padding: 0.6em 1.2em;
+      border-radius: 5px;
+      width: max-content;
+      box-shadow: 0 1px 4px #0001;
+      transition: background .2s, color .2s;
+    }
+    #star-link:hover {
+      background: #ffd54f;
+      color: #1a237e;
+    }
+    #mode-select {
+      display: flex;
+      justify-content: center;
+      gap: 1em;
+      margin: 2em 0 2.5em 0;
+    }
+    #mode-select button {
+      padding: 0.7em 1.5em;
+      border-radius: 5px;
+      border: none;
+      background: #e3e3e3;
+      color: #444;
+      font-size: 1.05em;
+      cursor: pointer;
+      transition: background .2s, color .2s;
+    }
+    #mode-select button.selected,
+    #mode-select button:hover {
+      background: #4a90e2;
+      color: #fff;
+    }
   </style>
 </head>
 <body>
   <div id="container">
     <h1>Joke & Riddle Quiz</h1>
+    <div id="mode-select">
+      <button id="jokesBtn">Jokes</button>
+      <button id="riddlesBtn">Riddles</button>
+      <button id="quizBtn">Quiz</button>
+    </div>
     <div id="scoreboard"></div>
-    <div id="question">Loading...</div>
+    <div id="question">Please select a mode to start.</div>
     <div class="options" id="options"></div>
     <div id="result"></div>
     <button id="nextBtn" style="display:none">Next</button>
     <button id="resetBtn">Reset Score</button>
+    <a id="star-link" href="https://github.com/SuperHackz/pocketquiz" target="_blank" rel="noopener">
+      ⭐ Star the Github Repo
+    </a>
   </div>
   <script>
     // Cookie helpers
@@ -116,36 +163,114 @@
         `Score: ${score} / ${total}${total ? ' ('+Math.round((score/total)*100)+'%)' : ''}`;
     }
 
-    // Joke/riddle APIs:
+    // Mode management
+    let mode = null; // "jokes", "riddles", "quiz"
+    const modeButtons = {
+      jokes: document.getElementById('jokesBtn'),
+      riddles: document.getElementById('riddlesBtn'),
+      quiz: document.getElementById('quizBtn')
+    };
+
+    function setMode(selectedMode) {
+      mode = selectedMode;
+      // Highlight selected mode
+      Object.keys(modeButtons).forEach(m => {
+        if (m === selectedMode) {
+          modeButtons[m].classList.add('selected');
+        } else {
+          modeButtons[m].classList.remove('selected');
+        }
+      });
+      // Reset and load question
+      document.getElementById('result').textContent = '';
+      document.getElementById('options').innerHTML = '';
+      document.getElementById('nextBtn').style.display = 'none';
+      loadQuestion();
+    }
+
+    modeButtons.jokes.onclick = () => setMode('jokes');
+    modeButtons.riddles.onclick = () => setMode('riddles');
+    modeButtons.quiz.onclick = () => setMode('quiz');
+
+    // APIs:
     // Joke: https://official-joke-api.appspot.com/jokes/random
     // Riddle: https://riddles-api.vercel.app/random (returns {riddle, answer})
+    // Quiz: https://opentdb.com/api.php?amount=1&type=multiple (Open Trivia DB)
 
-    async function fetchJokeOrRiddle() {
-      const isJoke = Math.random() < 0.5;
-      if (isJoke) {
-        const res = await fetch('https://official-joke-api.appspot.com/jokes/random');
-        const data = await res.json();
+    async function fetchJoke() {
+      const res = await fetch('https://official-joke-api.appspot.com/jokes/random');
+      const data = await res.json();
+      return {
+        question: data.setup,
+        answer: data.punchline,
+        type: 'joke'
+      };
+    }
+    async function fetchRiddle() {
+      const res = await fetch('https://riddles-api.vercel.app/random');
+      const data = await res.json();
+      return {
+        question: data.riddle,
+        answer: data.answer,
+        type: 'riddle'
+      };
+    }
+    async function fetchQuiz() {
+      const res = await fetch('https://opentdb.com/api.php?amount=1&type=multiple');
+      const data = await res.json();
+      if (!data.results || !data.results.length) {
+        // fallback
         return {
-          question: data.setup,
-          answer: data.punchline,
-          type: 'joke'
-        };
-      } else {
-        const res = await fetch('https://riddles-api.vercel.app/random');
-        const data = await res.json();
-        return {
-          question: data.riddle,
-          answer: data.answer,
-          type: 'riddle'
+          question: "Couldn't load trivia, try again.",
+          answer: "",
+          options: [],
+          type: 'quiz'
         };
       }
+      const q = data.results[0];
+      // Decode HTML entities
+      function decode(str) {
+        var txt = document.createElement('textarea');
+        txt.innerHTML = str;
+        return txt.value;
+      }
+      let options = q.incorrect_answers.map(decode);
+      options.push(decode(q.correct_answer));
+      // shuffle
+      for (let i = options.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [options[i], options[j]] = [options[j], options[i]];
+      }
+      return {
+        question: decode(q.question),
+        answer: decode(q.correct_answer),
+        options,
+        type: 'quiz'
+      };
+    }
+    // Fetch one based on mode
+    async function fetchQuestion(mode) {
+      if (mode === 'jokes') return fetchJoke();
+      if (mode === 'riddles') return fetchRiddle();
+      if (mode === 'quiz') return fetchQuiz();
+      // fallback: random
+      const pick = Math.random();
+      if (pick < 0.33) return fetchJoke();
+      if (pick < 0.66) return fetchRiddle();
+      return fetchQuiz();
     }
 
     // Generate multiple choice options (one correct, 2-3 distractors)
     async function generateOptions(correct, type) {
+      if (mode === 'quiz' || type === 'quiz') {
+        // For quiz mode, options already provided in fetchQuiz
+        return null; // handled separately
+      }
       let distractors = [];
       const tries = [];
-      for (let i = 0; i < 5; i++) tries.push(fetchJokeOrRiddle());
+      let fetcher = fetchJoke;
+      if (mode === 'riddles' || type === 'riddle') fetcher = fetchRiddle;
+      for (let i = 0; i < 5; i++) tries.push(fetcher());
       const results = await Promise.all(tries);
       for (const item of results) {
         if (item.answer !== correct && distractors.length < 3) {
@@ -169,17 +294,27 @@
     let allowClick = true;
 
     async function loadQuestion() {
+      if (!mode) {
+        document.getElementById('question').textContent = 'Please select a mode to start.';
+        document.getElementById('options').innerHTML = '';
+        document.getElementById('result').textContent = '';
+        document.getElementById('nextBtn').style.display = 'none';
+        return;
+      }
       document.getElementById('result').textContent = '';
       document.getElementById('nextBtn').style.display = 'none';
       allowClick = true;
       document.getElementById('question').textContent = 'Loading...';
       document.getElementById('options').innerHTML = '';
-      const data = await fetchJokeOrRiddle();
+      const data = await fetchQuestion(mode);
       currentAnswer = data.answer;
       document.getElementById('question').textContent = data.question;
-      const options = await generateOptions(data.answer, data.type);
       const optionsDiv = document.getElementById('options');
       optionsDiv.innerHTML = '';
+      let options = data.options;
+      if (!options) {
+        options = await generateOptions(data.answer, data.type);
+      }
       options.forEach(option => {
         const btn = document.createElement('button');
         btn.textContent = option;
@@ -220,7 +355,8 @@
 
     // Start
     loadScore();
-    loadQuestion();
+    // Don't auto-load, wait for mode
+    // loadQuestion();
   </script>
 </body>
 </html>
